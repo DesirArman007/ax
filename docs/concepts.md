@@ -17,7 +17,7 @@ The unit is deliberately small. An agent is not one process that runs to complet
 | `WorkspaceReady` | The workspace has finished setting up. Stays True afterwards. |
 | `Ready` | The task is running and `WorkspaceReady` is True. This is the one to wait on. |
 
-New tasks created with `ax apply` start in the `Suspended` phase (`Ready` is False with reason `Suspended`). Running `ax resume task <name>` starts or restores the sandbox and sets `Ready` to True once `WorkspaceReady` is True; running `ax suspend task <name>` checkpoints the sandbox back to `Suspended`. Deleting a task tears down the sandbox on Agent Substrate and removes the record. `ax delete` blocks until that has completed.
+New tasks created with `ax create` start in the `Suspended` phase (`Ready` is False with reason `Suspended`). Running `ax resume task <name>` starts or restores the sandbox and sets `Ready` to True once `WorkspaceReady` is True; running `ax suspend task <name>` checkpoints the sandbox back to `Suspended`. Deleting a task tears down the sandbox on Agent Substrate and removes the record. `ax delete` blocks until that has completed.
 
 ## Workspace
 
@@ -33,4 +33,4 @@ A `Workspace` populates the filesystem and tool landscape. Declare it once, bind
 
 A configuration for a model provider and its parameters: which provider to call, the model identifier, provider-specific generation parameters such as max_tokens, and references to the Kubernetes secret holding the credentials.
 
-Declaring models as cluster resources makes them manageable and reusable across tasks. The configuration lives in one place instead of in every agent's environment, so rotating a key, pinning a new model version, or tuning parameters is a single `ax apply` rather than a hunt through task definitions. AX's own components read `Model` resources as well.
+Declaring models as cluster resources makes them manageable and reusable across tasks. The configuration lives in one place instead of in every agent's environment, so rotating a key, pinning a new model version, or tuning parameters means deleting and recreating the `Model` resource rather than hunting through task definitions. AX's own components read `Model` resources as well.

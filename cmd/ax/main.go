@@ -151,12 +151,12 @@ func main() {
 	}
 
 	switch cmd {
-	case "apply":
+	case "create":
 		var atespaceFlag *string
 		if opts.atespaceExplicit {
 			atespaceFlag = &atespace
 		}
-		err = runApply(serverURL, atespaceFlag, cleanArgs)
+		err = runCreate(serverURL, atespaceFlag, cleanArgs)
 	case "get":
 		err = runGet(serverURL, atespace, cleanArgs)
 	case "describe":
@@ -258,7 +258,7 @@ Usage:
   ax [command] [flags]
 
 Available Commands:
-  apply -f <file>         Apply resources (tasks, workspaces, gateways, models) from a file or stdin
+  create -f <file>        Create resources (tasks, workspaces, gateways, models) from a file or stdin
   get tasks               List tasks
   get task <name>         Get a specific task
   get workspaces          List workspaces
@@ -307,7 +307,7 @@ func getAXClient(serverURL string) (v1alpha1.AXClient, *grpc.ClientConn, error) 
 }
 
 // A nil atespace leaves manifest atespaces unchanged and lets the server default missing ones.
-func runApply(serverURL string, atespace *string, args []string) error {
+func runCreate(serverURL string, atespace *string, args []string) error {
 	data, ok, err := manifestFromArgs(args)
 	if err != nil {
 		return err
@@ -347,108 +347,110 @@ func runApply(serverURL string, atespace *string, args []string) error {
 			}
 		}
 
-		kind, name, outcome, err := applyDocument(ctx, client, &doc, atespace)
+		kind, name, err := createDocument(ctx, client, &doc, atespace)
 		if err != nil {
-			return fmt.Errorf("applying document %d: %w", docIndex, err)
+			return fmt.Errorf("creating document %d: %w", docIndex, err)
 		}
-		fmt.Printf("%s.ax.io/%s %s\n", strings.ToLower(kind), name, outcome)
+		fmt.Printf("%s.ax.io/%s created\n", strings.ToLower(kind), name)
 	}
 }
 
-// applyDocument decodes one manifest by its kind and submits it with the matching
-// RPC. It reports the kind, the resource name, and whether the resource was
-// created, configured (spec changed), or unchanged, in the style of kubectl apply.
-func applyDocument(ctx context.Context, client v1alpha1.AXClient, doc *yaml.Node, atespace *string) (kind, name, outcome string, err error) {
+// createDocument decodes one manifest by its kind and submits it with the
+// matching Create RPC. It reports the kind and the created resource name.
+func createDocument(ctx context.Context, client v1alpha1.AXClient, doc *yaml.Node, atespace *string) (kind, name string, err error) {
 	var head struct {
 		Kind string `yaml:"kind"`
 	}
 	if err := doc.Decode(&head); err != nil {
-		return "", "", "", fmt.Errorf("reading kind: %w", err)
+		return "", "", fmt.Errorf("reading kind: %w", err)
 	}
 
 	switch head.Kind {
 	case v1alpha1.KindTask:
 		var task v1alpha1.Task
 		if err := doc.Decode(&task); err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		if err := setApplyAtespace(task.Metadata, atespace); err != nil {
-			return "", "", "", err
+		if err := setCreateAtespace(task.Metadata, atespace); err != nil {
+			return "", "", err
 		}
 		res, err := client.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &task})
 		if err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		return head.Kind, res.GetMetadata().GetName(), "created", nil
+		return head.Kind, res.GetMetadata().GetName(), nil
 
 	case v1alpha1.KindWorkspace:
 		var ws v1alpha1.Workspace
 		if err := doc.Decode(&ws); err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		if err := setApplyAtespace(ws.Metadata, atespace); err != nil {
-			return "", "", "", err
+		if err := setCreateAtespace(ws.Metadata, atespace); err != nil {
+			return "", "", err
 		}
-		existing, err := client.GetWorkspace(ctx, &v1alpha1.GetWorkspaceRequest{Atespace: ws.GetMetadata().GetAtespace(), Name: ws.GetMetadata().GetName()})
-		outcome, err := applyOutcome(err, existing.GetSpec(), ws.GetSpec())
-		if err != nil {
-			return "", "", "", err
+		_, err := client.GetWorkspace(ctx, &v1alpha1.GetWorkspaceRequest{
+			Name:     ws.GetMetadata().GetName(),
+			Atespace: ws.GetMetadata().GetAtespace(),
+		})
+		if err == nil {
+			return "", "", status.Errorf(codes.AlreadyExists, "workspace %s/%s already exists", ws.GetMetadata().GetAtespace(), ws.GetMetadata().GetName())
 		}
-		if outcome == "unchanged" && existing.GetStatus().GetPhase() == v1alpha1.WorkspacePhasePreparing {
-			outcome = "configured"
+		if status.Code(err) != codes.NotFound {
+			return "", "", err
 		}
+
 		// CreateWorkspace returns only once the workspace is pre-warmed.
 		createCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lifecycleRPCTimeout)
 		defer cancel()
 		res, err := client.CreateWorkspace(createCtx, &v1alpha1.CreateWorkspaceRequest{Workspace: &ws})
-		return head.Kind, res.GetMetadata().GetName(), outcome, err
+		return head.Kind, res.GetMetadata().GetName(), err
 
 	case v1alpha1.KindGateway:
 		var gw v1alpha1.Gateway
 		if err := doc.Decode(&gw); err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		if err := setApplyAtespace(gw.Metadata, atespace); err != nil {
-			return "", "", "", err
+		if err := setCreateAtespace(gw.Metadata, atespace); err != nil {
+			return "", "", err
 		}
-		existing, err := client.GetGateway(ctx, &v1alpha1.GetGatewayRequest{Atespace: gw.GetMetadata().GetAtespace(), Name: gw.GetMetadata().GetName()})
-		outcome, err := applyOutcome(err, existing.GetSpec(), gw.GetSpec())
-		if err != nil {
-			return "", "", "", err
-		}
+
 		var res *v1alpha1.Gateway
-		if outcome == "created" {
-			res, err = client.CreateGateway(ctx, &v1alpha1.CreateGatewayRequest{Gateway: &gw})
-		} else {
-			res, err = client.UpdateGateway(ctx, &v1alpha1.UpdateGatewayRequest{Gateway: &gw})
-		}
-		return head.Kind, res.GetMetadata().GetName(), outcome, err
+		res, err = client.CreateGateway(ctx, &v1alpha1.CreateGatewayRequest{Gateway: &gw})
+
+		return head.Kind, res.GetMetadata().GetName(), err
 
 	case v1alpha1.KindModel:
 		var m v1alpha1.Model
 		if err := doc.Decode(&m); err != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		if err := setApplyAtespace(m.Metadata, atespace); err != nil {
-			return "", "", "", err
+		if err := setCreateAtespace(m.Metadata, atespace); err != nil {
+			return "", "", err
 		}
-		existing, err := client.GetModel(ctx, &v1alpha1.GetModelRequest{Atespace: m.GetMetadata().GetAtespace(), Name: m.GetMetadata().GetName()})
-		outcome, err := applyOutcome(err, existing.GetSpec(), m.GetSpec())
-		if err != nil {
-			return "", "", "", err
+
+		_, err := client.GetModel(ctx, &v1alpha1.GetModelRequest{
+			Name:     m.GetMetadata().GetName(),
+			Atespace: m.GetMetadata().GetAtespace(),
+		})
+		if err == nil {
+			return "", "", fmt.Errorf("model %s/%s already exists", m.GetMetadata().GetAtespace(), m.GetMetadata().GetName())
 		}
+		if status.Code(err) != codes.NotFound {
+			return "", "", err
+		}
+
 		res, err := client.UpdateModel(ctx, &v1alpha1.UpdateModelRequest{Model: &m})
-		return head.Kind, res.GetMetadata().GetName(), outcome, err
+		return head.Kind, res.GetMetadata().GetName(), err
 
 	case "":
-		return "", "", "", errors.New("missing kind")
+		return "", "", errors.New("missing kind")
 	default:
-		return "", "", "", fmt.Errorf("unsupported kind %q (expected Task, Workspace, Gateway, or Model)", head.Kind)
+		return "", "", fmt.Errorf("unsupported kind %q (expected Task, Workspace, Gateway, or Model)", head.Kind)
 	}
 }
 
-// setApplyAtespace fills a missing atespace or rejects a mismatch with an explicit flag.
-func setApplyAtespace(meta *v1alpha1.ObjectMeta, atespace *string) error {
+// setCreateAtespace fills a missing atespace or rejects a mismatch with an explicit flag.
+func setCreateAtespace(meta *v1alpha1.ObjectMeta, atespace *string) error {
 	if meta == nil || atespace == nil {
 		return nil
 	}

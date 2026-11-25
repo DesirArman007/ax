@@ -409,10 +409,10 @@ func writeManifest(t *testing.T, manifest string) string {
 	return f
 }
 
-// apply runs `ax apply -f` on manifest and returns the CLI output.
-func (s *suiteEnv) apply(t *testing.T, atespace, manifest string) string {
+// create runs `ax create -f` on manifest and returns the CLI output.
+func (s *suiteEnv) create(t *testing.T, atespace, manifest string) string {
 	t.Helper()
-	return s.mustRunAX(t, atespace, "apply", "-f", writeManifest(t, manifest))
+	return s.mustRunAX(t, atespace, "create", "-f", writeManifest(t, manifest))
 }
 
 // deleteOnCleanup registers a best-effort `ax delete <kind> <name>` to run

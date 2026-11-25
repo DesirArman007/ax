@@ -220,14 +220,14 @@ check_gateway_secret() {
   fi
 }
 
-# start_task applies a task from a fresh start and resumes it. On failure it
+# start_task creates a task from a fresh start and resumes it. On failure it
 # marks the step failed and returns 1.
 start_task() {
   local step="$1" task_name="$2" manifest="$3" manifest_name="$4"
   # Tasks are immutable, so start from a fresh one on every run.
   run_ax delete task "${task_name}" >/dev/null 2>&1 || true
-  if ! ax_quiet apply -f "${manifest}"; then
-    mark_fail "${step}" "ax apply -f ${manifest_name} failed"
+  if ! ax_quiet create -f "${manifest}"; then
+    mark_fail "${step}" "ax create -f ${manifest_name} failed"
     return 1
   fi
   if ! ax_quiet resume task "${task_name}"; then
@@ -303,17 +303,17 @@ step2_warm_workspace() {
   local step="${STEPS[1]}"
   echo "==> [Step 2] Warm Workspace Snapshot"
   if ! live; then
-    mark_stub "${step}" "Set RUN_LIVE_STEPS=1 to apply workspace.yaml"
+    mark_stub "${step}" "Set RUN_LIVE_STEPS=1 to create workspace.yaml"
     return
   fi
   local tmp_manifest
   tmp_manifest="$(mktemp)"
   render_starter_manifest "${tmp_manifest}" "${WORKSPACE_MANIFEST}"
-  # Workspaces are immutable, and applying an identical spec again is a no-op.
-  # The first apply waits for the pre-warm: image pull, spec.setup, snapshot.
-  if ! AX_TIMEOUT=600 ax_quiet apply -f "${tmp_manifest}"; then
+  # Workspaces are immutable; the workspace must not already exist.
+  # Creation waits for the pre-warm: image pull, spec.setup, snapshot.
+  if ! AX_TIMEOUT=600 ax_quiet create -f "${tmp_manifest}"; then
     rm -f "${tmp_manifest}"
-    mark_fail "${step}" "ax apply -f workspace.yaml failed"
+    mark_fail "${step}" "ax create -f workspace.yaml failed"
     return
   fi
   rm -f "${tmp_manifest}"
@@ -336,8 +336,8 @@ step3_starter_task_session() {
   fi
   check_gateway_secret "${step}" || return
   # A task can only bind a Gateway that already exists.
-  if ! ax_quiet apply -f "${GATEWAY_MANIFEST}"; then
-    mark_fail "${step}" "ax apply -f gateway.yaml failed"
+  if ! ax_quiet create -f "${GATEWAY_MANIFEST}"; then
+    mark_fail "${step}" "ax create -f gateway.yaml failed"
     return
   fi
   local tmp_manifest

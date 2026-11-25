@@ -39,14 +39,12 @@ func (m *mockAXClient) CreateTask(ctx context.Context, in *v1alpha1.CreateTaskRe
 	}
 	return m.AXClient.CreateTask(ctx, in, opts...)
 }
-
 func (m *mockAXClient) GetWorkspace(ctx context.Context, in *v1alpha1.GetWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
 	if m.getWorkspaceFn != nil {
 		return m.getWorkspaceFn(ctx, in, opts...)
 	}
 	return m.AXClient.GetWorkspace(ctx, in, opts...)
 }
-
 func (m *mockAXClient) CreateWorkspace(ctx context.Context, in *v1alpha1.CreateWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
 	if m.createWorkspaceFn != nil {
 		return m.createWorkspaceFn(ctx, in, opts...)
@@ -54,7 +52,7 @@ func (m *mockAXClient) CreateWorkspace(ctx context.Context, in *v1alpha1.CreateW
 	return m.AXClient.CreateWorkspace(ctx, in, opts...)
 }
 
-func TestApplyDocument_CreateNewTask(t *testing.T) {
+func TestCreateDocument_CreateNewTask(t *testing.T) {
 	manifestYAML := `
 apiVersion: ax.io/v1alpha1
 kind: Task
@@ -80,19 +78,19 @@ spec:
 	}
 
 	docNode := node.Content[0]
-	kind, name, outcome, err := applyDocument(context.Background(), client, docNode, nil)
+	kind, name, err := createDocument(context.Background(), client, docNode, nil)
 	if err != nil {
-		t.Fatalf("expected applyDocument to succeed, got: %v", err)
+		t.Fatalf("expected createDocument to succeed, got: %v", err)
 	}
 	if !created {
 		t.Errorf("expected CreateTask to be called")
 	}
-	if kind != "Task" || name != "my-task" || outcome != "created" {
-		t.Errorf("expected Task/my-task created, got %s/%s %s", kind, name, outcome)
+	if kind != "Task" || name != "my-task" {
+		t.Errorf("expected Task/my-task created, got %s/%s", kind, name)
 	}
 }
 
-func TestApplyDocument_ExistingTaskFailsImmutable(t *testing.T) {
+func TestCreateDocument_ExistingTaskFailsImmutable(t *testing.T) {
 	manifestYAML := `
 apiVersion: ax.io/v1alpha1
 kind: Task
@@ -116,16 +114,16 @@ spec:
 	}
 
 	docNode := node.Content[0]
-	_, _, _, err := applyDocument(context.Background(), client, docNode, nil)
+	_, _, err := createDocument(context.Background(), client, docNode, nil)
 	if err == nil {
-		t.Fatalf("expected error applying to existing task, got nil")
+		t.Fatalf("expected error creating to existing task, got nil")
 	}
 	if !strings.Contains(err.Error(), "already exists and is immutable") {
-		t.Errorf("applyDocument() error = %v, want mentioning %q", err, "already exists and is immutable")
+		t.Errorf("createDocument() error = %v, want mentioning %q", err, "already exists and is immutable")
 	}
 }
 
-func TestApplyDocument_WorkspaceLifecycle(t *testing.T) {
+func TestCreateDocument_Workspace(t *testing.T) {
 	manifestYAML := `
 apiVersion: ax.io/v1alpha1
 kind: Workspace
@@ -152,11 +150,6 @@ spec:
 	}
 	docNode := node.Content[0]
 
-	var decoded v1alpha1.Workspace
-	if err := docNode.Decode(&decoded); err != nil {
-		t.Fatalf("docNode.Decode() failed: %v", err)
-	}
-
 	t.Run("create", func(t *testing.T) {
 		client := &mockAXClient{
 			getWorkspaceFn: func(ctx context.Context, in *v1alpha1.GetWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
@@ -172,61 +165,23 @@ spec:
 				return in.GetWorkspace(), nil
 			},
 		}
-		kind, name, outcome, err := applyDocument(t.Context(), client, docNode, nil)
+		kind, name, err := createDocument(t.Context(), client, docNode, nil)
 		if err != nil {
-			t.Fatalf("applyDocument() failed: %v", err)
+			t.Fatalf("createDocument() failed: %v", err)
 		}
-		if kind != "Workspace" || name != "dev-ws" || outcome != "created" {
-			t.Errorf("applyDocument() = (%q, %q, %q), want (\"Workspace\", \"dev-ws\", \"created\")", kind, name, outcome)
-		}
-	})
-
-	t.Run("identical_reapply", func(t *testing.T) {
-		client := &mockAXClient{
-			getWorkspaceFn: func(ctx context.Context, in *v1alpha1.GetWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
-				return &decoded, nil
-			},
-			createWorkspaceFn: func(ctx context.Context, in *v1alpha1.CreateWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
-				return in.GetWorkspace(), nil
-			},
-		}
-		_, _, outcome, err := applyDocument(t.Context(), client, docNode, nil)
-		if err != nil || outcome != "unchanged" {
-			t.Fatalf("applyDocument() = (%q, %v), want (\"unchanged\", nil)", outcome, err)
+		if kind != "Workspace" || name != "dev-ws" {
+			t.Errorf("createDocument() = (%q, %q), want (\"Workspace\", \"dev-ws\")", kind, name)
 		}
 	})
 
-	t.Run("preparing_reapply", func(t *testing.T) {
-		existing := &v1alpha1.Workspace{
-			Metadata: &v1alpha1.ObjectMeta{Name: "dev-ws", Atespace: "default"},
-			Spec:     decoded.GetSpec(),
-			Status:   &v1alpha1.WorkspaceStatus{Phase: v1alpha1.WorkspacePhasePreparing},
-		}
-		client := &mockAXClient{
-			getWorkspaceFn: func(ctx context.Context, in *v1alpha1.GetWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
-				return existing, nil
-			},
-			createWorkspaceFn: func(ctx context.Context, in *v1alpha1.CreateWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
-				return in.GetWorkspace(), nil
-			},
-		}
-		_, _, outcome, err := applyDocument(t.Context(), client, docNode, nil)
-		if err != nil || outcome != "configured" {
-			t.Fatalf("applyDocument(preparing) = (%q, %v), want (\"configured\", nil)", outcome, err)
-		}
-	})
-
-	t.Run("mutated_reapply", func(t *testing.T) {
+	t.Run("existing_fails", func(t *testing.T) {
 		client := &mockAXClient{
 			getWorkspaceFn: func(ctx context.Context, in *v1alpha1.GetWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
 				return &v1alpha1.Workspace{Metadata: &v1alpha1.ObjectMeta{Name: "dev-ws", Atespace: "default"}}, nil
 			},
-			createWorkspaceFn: func(ctx context.Context, in *v1alpha1.CreateWorkspaceRequest, opts ...grpc.CallOption) (*v1alpha1.Workspace, error) {
-				return nil, status.Error(codes.FailedPrecondition, "workspace default/dev-ws already exists and is immutable")
-			},
 		}
-		if _, _, _, err := applyDocument(t.Context(), client, docNode, nil); status.Code(err) != codes.FailedPrecondition {
-			t.Fatalf("applyDocument() error = %v, want FailedPrecondition", err)
+		if _, _, err := createDocument(t.Context(), client, docNode, nil); status.Code(err) != codes.AlreadyExists {
+			t.Fatalf("createDocument() error = %v, want AlreadyExists", err)
 		}
 	})
 }

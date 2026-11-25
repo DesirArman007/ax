@@ -107,9 +107,8 @@ spec:
 `
 
 // TestE2E_WorkspaceCRUD verifies the Workspace lifecycle through the CLI:
-// `ax apply` creates the Workspace, returns unchanged on identical re-apply,
-// rejects spec mutations as immutable, surfaces the spec in `ax get` and
-// `ax describe`, and removes it via `ax delete`.
+// `ax create` creates the Workspace, rejects creating an existing one,
+// surfaces the spec in `ax get` and `ax describe`, and removes it via `ax delete`.
 func TestE2E_WorkspaceCRUD(t *testing.T) {
 	ns := defaultAtespace
 	name := uniqueName("ws-crud")
@@ -122,14 +121,13 @@ func TestE2E_WorkspaceCRUD(t *testing.T) {
 	}
 	ref := "workspace.ax.io/" + name
 
-	assertContains(t, "first apply", env.apply(t, ns, manifest("e2e-v1")), ref+" created")
-	assertContains(t, "identical re-apply", env.apply(t, ns, manifest("e2e-v1")), ref+" unchanged")
+	assertContains(t, "first create", env.create(t, ns, manifest("e2e-v1")), ref+" created")
 
-	out, err := env.runAX(ns, "apply", "-f", writeManifest(t, manifest("e2e-v2")))
+	out, err := env.runAX(ns, "create", "-f", writeManifest(t, manifest("e2e-v2")))
 	if err == nil {
-		t.Fatalf("expected modifying an existing workspace to fail as immutable, got:\n%s", out)
+		t.Fatalf("expected creating an existing workspace to fail, got:\n%s", out)
 	}
-	assertContains(t, "modified apply", out, "already exists and is immutable")
+	assertContains(t, "duplicate create", out, "already exists")
 
 	assertContains(t, "'ax get workspaces'", env.mustRunAX(t, ns, "get", "workspaces"), name)
 	assertContains(t, "'ax get workspace'", env.mustRunAX(t, ns, "get", "workspace", name),
@@ -157,7 +155,7 @@ spec:
     key: api-key
 `
 
-// TestE2E_ModelCRUD verifies the same apply / get / describe / delete
+// TestE2E_ModelCRUD verifies the same create / get / describe / delete
 // lifecycle as TestE2E_WorkspaceCRUD for a Model.
 func TestE2E_ModelCRUD(t *testing.T) {
 	ns := defaultAtespace
@@ -169,16 +167,18 @@ func TestE2E_ModelCRUD(t *testing.T) {
 	}
 	ref := "model.ax.io/" + name
 
-	assertContains(t, "first apply", env.apply(t, ns, manifest("gemini-2.5-pro")), ref+" created")
-	assertContains(t, "identical re-apply", env.apply(t, ns, manifest("gemini-2.5-pro")), ref+" unchanged")
-	assertContains(t, "modified apply", env.apply(t, ns, manifest("gemini-2.5-flash")), ref+" configured")
-
-	assertContains(t, "'ax get models'", env.mustRunAX(t, ns, "get", "models"), name, "gemini-2.5-flash")
-	assertContains(t, "'ax get model'", env.mustRunAX(t, ns, "get", "model", name), "gemini-2.5-flash")
+	assertContains(t, "first create", env.create(t, ns, manifest("gemini-2.5-pro")), ref+" created")
+	out, err := env.runAX(ns, "create", "-f", writeManifest(t, manifest("gemini-2.5-flash")))
+	if err == nil {
+		t.Fatalf("expected creating an existing model to fail, got:\n%s", out)
+	}
+	assertContains(t, "duplicate create", out, "already exists")
+	assertContains(t, "'ax get models'", env.mustRunAX(t, ns, "get", "models"), name, "gemini-2.5-pro")
+	assertContains(t, "'ax get model'", env.mustRunAX(t, ns, "get", "model", name), "gemini-2.5-pro")
 	assertContains(t, "'ax describe model'", env.mustRunAX(t, ns, "describe", "model", name), "gemini-secret")
 
 	env.mustRunAX(t, ns, "delete", "model", name)
-	_, err := env.AXClient.GetModel(t.Context(), &v1alpha1.GetModelRequest{Name: name, Atespace: ns})
+	_, err = env.AXClient.GetModel(t.Context(), &v1alpha1.GetModelRequest{Name: name, Atespace: ns})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("GetModel after delete: got %v, want NotFound", err)
 	}
@@ -212,7 +212,7 @@ spec:
       - {{.Host}}
 `
 
-// TestE2E_GatewayCRUD verifies the same apply / get / describe / delete
+// TestE2E_GatewayCRUD verifies the same create / get / describe / delete
 // lifecycle as TestE2E_WorkspaceCRUD for a Gateway.
 func TestE2E_GatewayCRUD(t *testing.T) {
 	ns := defaultAtespace
@@ -224,16 +224,18 @@ func TestE2E_GatewayCRUD(t *testing.T) {
 	}
 	ref := "gateway.ax.io/" + name
 
-	assertContains(t, "first apply", env.apply(t, ns, manifest("a.example.com")), ref+" created")
-	assertContains(t, "identical re-apply", env.apply(t, ns, manifest("a.example.com")), ref+" unchanged")
-	assertContains(t, "modified apply", env.apply(t, ns, manifest("b.example.com")), ref+" configured")
-
+	assertContains(t, "first create", env.create(t, ns, manifest("a.example.com")), ref+" created")
+	out, err := env.runAX(ns, "create", "-f", writeManifest(t, manifest("b.example.com")))
+	if err == nil {
+		t.Fatalf("expected creating an existing gateway to fail, got:\n%s", out)
+	}
+	assertContains(t, "duplicate create", out, "already exists")
 	assertContains(t, "'ax get gateways'", env.mustRunAX(t, ns, "get", "gateways"), name)
 	assertContains(t, "'ax get gateway'", env.mustRunAX(t, ns, "get", "gateway", name), "b.example.com")
-	assertContains(t, "'ax describe gateway'", env.mustRunAX(t, ns, "describe", "gateway", name), "https: b.example.com")
+	assertContains(t, "'ax describe gateway'", env.mustRunAX(t, ns, "describe", "gateway", name), "https: a.example.com")
 
 	env.mustRunAX(t, ns, "delete", "gateway", name)
-	_, err := env.AXClient.GetGateway(t.Context(), &v1alpha1.GetGatewayRequest{Name: name, Atespace: ns})
+	_, err = env.AXClient.GetGateway(t.Context(), &v1alpha1.GetGatewayRequest{Name: name, Atespace: ns})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("GetGateway after delete: got %v, want NotFound", err)
 	}
@@ -256,14 +258,14 @@ func TestE2E_TaskLifecycleAndSubstrateSync(t *testing.T) {
 	manifest := taskManifest(t, ns, name, true)
 
 	// 1. A new task is created Suspended, backed by an Actor of the same name.
-	assertContains(t, "'ax apply'", env.apply(t, ns, manifest), "task.ax.io/"+name+" created")
+	assertContains(t, "'ax create'", env.create(t, ns, manifest), "task.ax.io/"+name+" created")
 	task := env.getTask(t, ns, name)
 	assertState(t, task, v1alpha1.TaskState_TASK_STATE_SUSPENDED)
 	if got := task.GetStatus().GetActor(); got != name {
 		t.Fatalf("task actor = %q, want %q", got, name)
 	}
 
-	// 2. Tasks are immutable: both CreateTask and `ax apply` reject a duplicate.
+	// 2. Tasks are immutable: both CreateTask and `ax create` reject a duplicate.
 	// The spec must pass validation so the server reaches the existence check.
 	_, err := env.AXClient.CreateTask(ctx, &v1alpha1.CreateTaskRequest{Task: &v1alpha1.Task{
 		Metadata: &v1alpha1.ObjectMeta{Name: name, Atespace: ns},
@@ -272,11 +274,11 @@ func TestE2E_TaskLifecycleAndSubstrateSync(t *testing.T) {
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("duplicate CreateTask: got %v, want FailedPrecondition", err)
 	}
-	out, err := env.runAX(ns, "apply", "-f", writeManifest(t, manifest))
+	out, err := env.runAX(ns, "create", "-f", writeManifest(t, manifest))
 	if err == nil {
-		t.Fatalf("expected re-applying an existing task to fail, got:\n%s", out)
+		t.Fatalf("expected creating an existing task to fail, got:\n%s", out)
 	}
-	assertContains(t, "duplicate 'ax apply'", out, "already exists and is immutable")
+	assertContains(t, "duplicate 'ax create'", out, "already exists")
 
 	// 3. Substrate has a suspended Actor using a shared Profile ActorTemplate.
 	actor := env.getActor(t, ns, name, ateapipb.ActorState_ACTOR_STATE_SUSPENDED)
@@ -375,7 +377,7 @@ func TestE2E_MetadataServerAndGuestExec(t *testing.T) {
 	env.deleteOnCleanup(t, ns, "workspace", ws)
 	env.deleteOnCleanup(t, ns, "task", task)
 
-	env.apply(t, ns, renderYAML(t, metadataManifest, map[string]string{"Workspace": ws, "Task": task, "Atespace": ns}))
+	env.create(t, ns, renderYAML(t, metadataManifest, map[string]string{"Workspace": ws, "Task": task, "Atespace": ns}))
 	env.mustRunAX(t, ns, "resume", "task", task)
 
 	// 1. `ax ssh` sees spec.env, the metadata URL, and workspace files.
@@ -420,7 +422,7 @@ func TestE2E_MetadataServerAndGuestExec(t *testing.T) {
 	// 4. `ax ssh` is rejected for tasks without spec.debug.
 	noDebug := uniqueName("task-nodebug")
 	env.deleteOnCleanup(t, ns, "task", noDebug)
-	env.apply(t, ns, taskManifest(t, ns, noDebug, false))
+	env.create(t, ns, taskManifest(t, ns, noDebug, false))
 	env.mustRunAX(t, ns, "resume", "task", noDebug)
 	out, err = env.runAX(ns, "ssh", noDebug, "--", "echo", "should-fail")
 	if err == nil {
@@ -478,7 +480,7 @@ func TestE2E_WorkspaceSetup_FilesAndGit(t *testing.T) {
 	env.deleteOnCleanup(t, ns, "workspace", wsGit)
 	env.deleteOnCleanup(t, ns, "task", task)
 
-	env.apply(t, ns, renderYAML(t, workspaceSetupManifest, map[string]string{
+	env.create(t, ns, renderYAML(t, workspaceSetupManifest, map[string]string{
 		"GitWorkspace": wsGit, "Task": task, "Atespace": ns, "Repo": sampleRepo,
 	}))
 	env.mustRunAX(t, ns, "resume", "task", task)
@@ -542,7 +544,7 @@ func TestE2E_TaskSuspendAndResumePersistence(t *testing.T) {
 	env.deleteOnCleanup(t, ns, "workspace", ws)
 	env.deleteOnCleanup(t, ns, "task", task)
 
-	env.apply(t, ns, renderYAML(t, persistenceManifest, map[string]string{"Workspace": ws, "Task": task, "Atespace": ns}))
+	env.create(t, ns, renderYAML(t, persistenceManifest, map[string]string{"Workspace": ws, "Task": task, "Atespace": ns}))
 	env.mustRunAX(t, ns, "resume", "task", task)
 
 	// 1. Write to the durable /workspace volume and to the ephemeral rootfs.
@@ -576,7 +578,7 @@ func TestE2E_DescribeAndAtespaceIsolation(t *testing.T) {
 	task := uniqueName("task-describe")
 	env.deleteOnCleanup(t, ns, "task", task)
 
-	env.apply(t, ns, taskManifest(t, ns, task, true))
+	env.create(t, ns, taskManifest(t, ns, task, true))
 
 	// 1. The task is visible only in its own atespace.
 	if _, err := env.AXClient.GetTask(ctx, &v1alpha1.GetTaskRequest{Name: task, Atespace: defaultAtespace}); status.Code(err) != codes.NotFound {
@@ -660,8 +662,7 @@ spec:
 //   - ax-server is unreachable even though a rule names it.
 //   - A task without a Gateway reaches nothing.
 //   - A workspace set up through the Gateway reaches the echo server.
-//   - Editing or deleting the Gateway does not affect a task that already
-//     runs with it.
+//   - Deleting the Gateway does not affect a task that already runs with it.
 func TestE2E_GatewayEgress(t *testing.T) {
 	ns := defaultAtespace
 	gw := uniqueName("gw-egress")
@@ -689,11 +690,11 @@ func TestE2E_GatewayEgress(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = env.kubectl("-n", env.AXSystemNamespace, "delete", "secret", secret, unlabeled, "--ignore-not-found")
 	})
-	env.apply(t, ns, renderYAML(t, gatewayEgressManifest, map[string]string{
+	env.create(t, ns, renderYAML(t, gatewayEgressManifest, map[string]string{
 		"Gateway": gw, "Task": bound, "Atespace": ns,
 		"Namespace": env.AXSystemNamespace, "Secret": secret, "UnlabeledSecret": unlabeled,
 	}))
-	env.apply(t, ns, taskManifest(t, ns, unbound, true))
+	env.create(t, ns, taskManifest(t, ns, unbound, true))
 	env.mustRunAX(t, ns, "resume", "task", bound)
 	env.mustRunAX(t, ns, "resume", "task", unbound)
 
@@ -760,22 +761,16 @@ func TestE2E_GatewayEgress(t *testing.T) {
 		t.Fatalf("GET %s from a task without a gateway = %q, want %q", echoURL, got, want)
 	}
 
-	// 6. A workspace is set up through the Gateway. `ax apply` fails unless
+	// 6. A workspace is set up through the Gateway. `ax create` fails unless
 	// its setup command reaches the echo server.
-	env.apply(t, ns, renderYAML(t, gatewayEgressWorkspaceManifest, map[string]string{
+	env.create(t, ns, renderYAML(t, gatewayEgressWorkspaceManifest, map[string]string{
 		"Workspace": ws, "Gateway": gw, "Atespace": ns, "URL": echoURL,
 	}))
 
-	// 7. Editing and then deleting the Gateway does not affect the task,
-	// across a suspend and resume. The edited Gateway no longer allows the
-	// echo server.
-	env.apply(t, ns, renderYAML(t, gatewayCRUDManifest, map[string]string{"Name": gw, "Atespace": ns, "Host": noRuleHost}))
-	for _, change := range []string{"edited", "deleted"} {
-		if change == "deleted" {
-			env.mustRunAX(t, ns, "delete", "gateway", gw)
-		}
-		env.mustRunAX(t, ns, "suspend", "task", bound)
-		env.mustRunAX(t, ns, "resume", "task", bound)
-		assertContains(t, "request received after the gateway was "+change, received(), "Bearer e2e-token")
-	}
+	// 7. Deleting the Gateway does not affect a task that already runs with it,
+	// across a suspend and resume.
+	env.mustRunAX(t, ns, "delete", "gateway", gw)
+	env.mustRunAX(t, ns, "suspend", "task", bound)
+	env.mustRunAX(t, ns, "resume", "task", bound)
+	assertContains(t, "request received after the gateway was deleted", received(), "Bearer e2e-token")
 }

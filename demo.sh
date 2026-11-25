@@ -15,7 +15,7 @@
 
 # AX demo: the full lifecycle of one task in about two minutes.
 #
-#   1. Declare a Workspace and a Task in YAML and apply them.
+#   1. Declare a Workspace and a Task in YAML and create them.
 #   2. Resume the task — new tasks start Suspended — and inspect its status.
 #   3. Look inside the task with `ax ssh`.
 #   4. Suspend the task, checkpointing its workspace.
@@ -143,7 +143,7 @@ spec:
       value: "active"
 YAML
 printf '%s' "${DIM}"; sed 's/^/    /' "${DEMO_YAML}"; printf '%s\n\n' "${RESET}"
-run ax apply -f "${DEMO_YAML}"
+run ax create -f "${DEMO_YAML}"
 
 step "Resume the task"
 note "New tasks are created Suspended by default. Resuming creates the worker on Agent Substrate and initializes /workspace."

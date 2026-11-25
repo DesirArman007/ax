@@ -59,7 +59,7 @@ The installer never modifies system directories (such as `/usr/local/bin`) and n
 | **Legacy tools no longer needed** | No Go toolchain, `git clone substrate`, `ko`, `ate-setup`, `openssl`, `jq`, or `crane` | No Go, `docker`/`podman`, `make`, `openssl`, `sed`, `jq`, or `crane` |
 
 > [!NOTE]
-> `ax local`, `ax install`, and tunnel commands (`ax apply`, `ax get`, `ax ssh`) automatically use `~/.ax/bin/kubectl` when no system `kubectl` is in `PATH`, while `ax ctx` can list and switch contexts offline without `kubectl`. To invoke `ax` and `kubectl` directly in every new shell, add `export PATH="$HOME/.ax/bin:$PATH"` to your shell profile (`~/.zshrc` or `~/.bashrc`).
+> `ax local`, `ax install`, and tunnel commands (`ax create`, `ax get`, `ax ssh`) automatically use `~/.ax/bin/kubectl` when no system `kubectl` is in `PATH`, while `ax ctx` can list and switch contexts offline without `kubectl`. To invoke `ax` and `kubectl` directly in every new shell, add `export PATH="$HOME/.ax/bin:$PATH"` to your shell profile (`~/.zshrc` or `~/.bashrc`).
 
 ### Remote Cluster Prerequisites (for Step 5)
 
@@ -216,9 +216,9 @@ ax ctx
 
 ---
 
-## Step 4: Local Sandbox Lifecycle (`apply`, `resume`, `ssh`, and Snapshot Restore)
+## Step 4: Local Sandbox Lifecycle (`create`, `resume`, `ssh`, and Snapshot Restore)
 
-### 4.1 Create a Task (`ax apply`)
+### 4.1 Create a Task (`ax create`)
 
 ```bash
 cat <<EOF > /tmp/demo-task.yaml
@@ -237,7 +237,7 @@ spec:
       value: "hello-from-ax"
 EOF
 
-ax apply -f /tmp/demo-task.yaml
+ax create -f /tmp/demo-task.yaml
 ax get tasks
 ax ctx
 ```
@@ -284,7 +284,7 @@ ax ssh demo-task -- cat /workspace/durable.txt
 
 ## Step 5: Deploy to a Remote GKE + Substrate Cluster (`ax ctx` & `ax install`)
 
-Once validated locally, switch to your remote Kubernetes + Agent Substrate cluster, install AX with `ax install`, and apply the **exact same** `/tmp/demo-task.yaml` without changing a single line.
+Once validated locally, switch to your remote Kubernetes + Agent Substrate cluster, install AX with `ax install`, and create the Task from the **exact same** `/tmp/demo-task.yaml` without changing a single line.
 
 ### 5.1 Switch Context and Run `ax install`
 
@@ -308,8 +308,8 @@ ax install
 ### 5.2 Run the Same Task Manifest on GKE and Switch Between Clusters
 
 ```bash
-# 1. Apply the exact same Task YAML and verify ax resume + ax ssh on GKE
-ax apply -f /tmp/demo-task.yaml
+# 1. Create from the exact same Task YAML and verify ax resume + ax ssh on GKE
+ax create -f /tmp/demo-task.yaml
 ax resume task demo-task
 ax ssh demo-task -- sh -c 'uname -a && echo "ENV=$GREETING"'
 
@@ -331,7 +331,7 @@ ax ctx "$GKE_CTX" && ax get tasks
 
 ### 5.3 Promote a Local Task to GKE (`ax promote`)
 
-`ax promote` copies a Task that already exists on one cluster, with the Workspace and Gateway it binds, to another cluster and resumes it there, so you do not have to re-apply its manifests.
+`ax promote` copies a Task that already exists on one cluster, with the Workspace and Gateway it binds, to another cluster and resumes it there, so you do not have to create those resources again from their manifests.
 
 ```bash
 # 1. From the local cluster, check what promoting demo-task to GKE would do

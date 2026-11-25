@@ -2,9 +2,9 @@
 
 All four kinds can live in one multi-document YAML file. The examples below show every kind; [`examples/simple.yaml`](../examples/simple.yaml) is the smallest working Task.
 
-`metadata.name` and `metadata.atespace` become Substrate resource names, so they must be lowercase RFC 1123 labels: at most 63 lowercase alphanumeric characters or `-`, starting and ending with an alphanumeric character. `ax apply` rejects anything else up front rather than letting the task fail later with `ActorCreationFailed`.
+`metadata.name` and `metadata.atespace` become Substrate resource names, so they must be lowercase RFC 1123 labels: at most 63 lowercase alphanumeric characters or `-`, starting and ending with an alphanumeric character. `ax create` rejects anything else up front rather than letting the task fail later with `ActorCreationFailed`.
 
-When `metadata.atespace` is omitted, `ax apply -a team-a -f manifest.yaml` uses `team-a`. Without `-a` or `--atespace`, the manifest's atespace is preserved, or defaults to `default` if omitted. If an explicit flag disagrees with `metadata.atespace`, that resource is rejected before it is submitted.
+When `metadata.atespace` is omitted, `ax create -a team-a -f manifest.yaml` uses `team-a`. Without `-a` or `--atespace`, the manifest's atespace is preserved, or defaults to `default` if omitted. If an explicit flag disagrees with `metadata.atespace`, that resource is rejected before it is submitted.
 
 `metadata.uid`, `metadata.createTime`, `metadata.updateTime`, `metadata.deleteTime`, and `status` are assigned by the server and ignored in a manifest, so the output of `ax get` can be applied as it is.
 
@@ -54,7 +54,7 @@ spec:
 
 ### Task lifecycle (initial `Suspended` phase)
 
-`ax apply` provisions a new task's `ActorTemplate` and `Actor` in the `Suspended` phase (`Ready=False`, `Reason=Suspended`) without running `spec.commands` immediately. Start execution by resuming the task:
+`ax create` provisions a new task's `ActorTemplate` and `Actor` in the `Suspended` phase (`Ready=False`, `Reason=Suspended`) without running `spec.commands` immediately. Start execution by resuming the task:
 
 ```bash
 ax resume task task123
@@ -86,7 +86,7 @@ Substrate requires `spec.profile.image` (and a Workspace's `spec.profile.image`)
 
 A task binds at most one `Workspace` through `spec.workspace`. The binding needs a `name`; without a `path` the workspace is mounted at `/workspace`. That path is the working directory of `spec.commands`, and the task reports `WorkspaceReady` once the workspace is prepared. A task with no `workspace` gets an empty working directory at `/workspace`.
 
-The bound `Workspace` must already exist in the task's atespace. Creating a task that binds a missing workspace fails with `FailedPrecondition` and stores nothing. `ax apply` creates documents in file order, so list a `Workspace` before the `Task` that binds it.
+The bound `Workspace` must already exist in the task's atespace. Creating a task that binds a missing workspace fails with `FailedPrecondition` and stores nothing. `ax create` creates documents in file order, so list a `Workspace` before the `Task` that binds it.
 
 To work on content from several sources, put it all in one `Workspace`, for example by listing several repositories under `spec.setup.git` or adding files through `spec.setup.files`.
 
@@ -100,9 +100,9 @@ If Agent Substrate refuses one of the rules, the task is marked `Failed` with re
 
 ### Sizing the sandbox
 
-`spec.profile.resources.limits` caps the CPU and memory of the task's sandbox. The controller copies the limits onto the Substrate `ActorTemplate` it provisions for the task, using Kubernetes quantity syntax (`500m`, `2`, `4Gi`). Only `cpu` and `memory` are supported, each quantity must be greater than zero, and the CPU limit must be below 1000 cores. `ax apply` rejects values outside these rules, and a task whose limits Substrate refuses is marked `Failed` with reason `TemplateCreationFailed` rather than run without them. Because Substrate requires both CPU and memory limits on every `ActorTemplate`, any omitted dimension defaults to `1` CPU (`1000m`) and `512Mi` memory.
+`spec.profile.resources.limits` caps the CPU and memory of the task's sandbox. The controller copies the limits onto the Substrate `ActorTemplate` it provisions for the task, using Kubernetes quantity syntax (`500m`, `2`, `4Gi`). Only `cpu` and `memory` are supported, each quantity must be greater than zero, and the CPU limit must be below 1000 cores. `ax create` rejects values outside these rules, and a task whose limits Substrate refuses is marked `Failed` with reason `TemplateCreationFailed` rather than run without them. Because Substrate requires both CPU and memory limits on every `ActorTemplate`, any omitted dimension defaults to `1` CPU (`1000m`) and `512Mi` memory.
 
-Substrate sizes sandboxes by limits alone, so `spec.profile.resources.requests` is not supported and `ax apply` rejects a manifest that sets it.
+Substrate sizes sandboxes by limits alone, so `spec.profile.resources.requests` is not supported and `ax create` rejects a manifest that sets it.
 
 ### Goal, retries, and session ID
 
@@ -114,7 +114,7 @@ Substrate sizes sandboxes by limits alone, so `spec.profile.resources.requests` 
 
 `spec.config` is an arbitrary YAML object of per-task settings for the task's [runner](runner.md) or command. AX stores it and hands it over unchanged as part of the `Task`, both in `AX_TASK_YAML` and from the `/metadata/v1alpha1/ax/task` endpoint, so one runner image can serve many tasks that differ only in their settings. Nested maps and lists are kept as they are, instead of being flattened into `spec.env` strings.
 
-The control plane does not interpret `spec.config`; its schema belongs to the runner. `ax apply` only rejects a config that is not an object or whose JSON encoding exceeds 16 KiB. The whole task, config included, must also stay under 31 KiB once encoded as YAML, because it reaches the runner in a single environment variable and Substrate caps each value at 32 KiB. Numbers are stored as JSON numbers (double precision), so quote large integers or IDs that must survive exactly. Like the rest of the spec, the config is immutable once the task is created: changing it means creating a new task.
+The control plane does not interpret `spec.config`; its schema belongs to the runner. `ax create` only rejects a config that is not an object or whose JSON encoding exceeds 16 KiB. The whole task, config included, must also stay under 31 KiB once encoded as YAML, because it reaches the runner in a single environment variable and Substrate caps each value at 32 KiB. Numbers are stored as JSON numbers (double precision), so quote large integers or IDs that must survive exactly. Like the rest of the spec, the config is immutable once the task is created: changing it means creating a new task.
 
 `spec.config` is stored in plain text and shown by `ax get task` and `ax describe task`, so don't put credentials in it. Use secrets instead, for example `Model.spec.secretKey`.
 
@@ -196,7 +196,7 @@ spec:
 
 ### Workspace pre-warming
 
-A Workspace with a `spec.profile` or any `spec.setup` step is pre-warmed when it is created. `ax apply` returns once that finishes (the CLI waits up to 5 minutes), so the first apply takes as long as the image pull, the setup steps, and the snapshot upload:
+A Workspace with a `spec.profile` or any `spec.setup` step is pre-warmed when it is created. `ax create` returns once that finishes (the CLI waits up to 5 minutes), so creation takes as long as the image pull, the setup steps, and the snapshot upload:
 
 1. `ax-server` starts a temporary setup actor from the workspace's profile.
 2. The actor runs `spec.setup` in `/workspace`.
@@ -204,7 +204,7 @@ A Workspace with a `spec.profile` or any `spec.setup` step is pre-warmed when it
 
 `ax describe workspace <name>` shows the result: `Phase` is `Ready`, and the `SnapshotReady` condition names the snapshot tag. A task that binds the Workspace at the default path (`/workspace`) is created from that tag, so `spec.setup` does not run again; `ax describe task <name>` shows `Workspace seeded from snapshot tag <tag>` on its `WorkspaceReady` condition. A task that mounts the Workspace at another `spec.workspace.path` skips the snapshot and runs setup in its own sandbox.
 
-If setup fails, `Phase` is `Failed` and `Last Error` holds the cause; delete the Workspace and create it again. If the apply is interrupted, `Phase` stays `Preparing` and applying the same manifest again retries.
+If setup fails, `Phase` is `Failed` and `Last Error` holds the cause; delete the Workspace and create it again. If creation is interrupted, `Phase` stays `Preparing`; inspect the Workspace and delete it before attempting to create it again.
 
 ## Gateway
 
@@ -257,9 +257,9 @@ spec:
 
 `credentialUri` has the form `ate-secret://<provider>/<path>` and is resolved by a credential provider registered with Agent Substrate. For the bundled Kubernetes Secrets provider it is `ate-secret://k8s.io/default/<namespace>/<secret>/<key>`. That provider denies by default: matching requests get a 403 until a cluster admin grants the task's atespace the Secret's namespace in the `k8s-credential-provider-namespace-policy` ConfigMap in `ate-system`. A grant can be limited to Secrets with given labels, such as `ax.io/credential: "true"`, so that other Secrets in that namespace stay out of reach. See Substrate's [egress credential injection](https://github.com/agent-substrate/substrate/blob/v1.0.0/docs/guides/egress-credential-injection.md) guide.
 
-### What `ax apply` rejects
+### What `ax create` rejects
 
-`ax apply` rejects a rule that:
+`ax create` rejects a rule that:
 
 - uses `*` alone as a hostname, which would match every host, including hosts inside the cluster;
 - names an IP address;

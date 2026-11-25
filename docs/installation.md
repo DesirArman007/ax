@@ -254,7 +254,7 @@ spec:
     image: ${AX_TASK_IMAGE}
   commands: ["sleep", "infinity"]
 EOF
-"$AX_BIN" --context "$AX_CONTEXT" -n ax-system apply -f "$AX_INSTALL_DIR/task.yaml"
+"$AX_BIN" --context "$AX_CONTEXT" -n ax-system create -f "$AX_INSTALL_DIR/task.yaml"
 "$AX_BIN" --context "$AX_CONTEXT" -n ax-system describe task "$AX_CHECK_TASK"
 ```
 

@@ -26,7 +26,7 @@ option go_package = "github.com/google/ax/pkg/apis/v1alpha1";
 
 // AX defines the core control plane gRPC service for autonomous agent orchestration.
 service AX {
-  // Manifests are parsed by the client (see `ax apply`) and submitted through the
+  // Manifests are parsed by the client (see `ax create`) and submitted through the
   // typed RPCs below; the server never receives raw YAML.
 
   // Tasks

@@ -43,10 +43,10 @@ spec:
   debug: true   # enables `ax ssh`
 ```
 
-Then apply it, resume it, and look over the agent's shoulder:
+Then create it, resume it, and look over the agent's shoulder:
 
 ```bash
-ax apply -f task.yaml
+ax create -f task.yaml
 ax resume task test
 ax describe task test
 ax ssh test -- ls -al /workspace
@@ -104,7 +104,7 @@ Official release binaries deploy the matching release `ax-server` image by defau
 From your ax checkout:
 
 ```bash
-ax apply -f examples/simple.yaml         # the smallest useful Task
+ax create -f examples/simple.yaml         # the smallest useful Task
 ax resume task simple-task               # new tasks start Suspended; resume schedules the actor and starts it
 ax get tasks
 # NAME          ATESPACE   STATE     ACTOR         AGE
@@ -139,13 +139,13 @@ Want to see the whole lifecycle end to end? Run `AX_TASK_IMAGE=... ./demo.sh` ([
 
 ## CLI usage
 
-`ax` talks to the control plane over gRPC. It is deliberately `kubectl`-shaped: `apply`, `get`, `describe`, `delete`, plus a few agent-specific verbs.
+`ax` talks to the control plane over gRPC. It is deliberately `kubectl`-shaped: `create`, `get`, `describe`, `delete`, plus a few agent-specific verbs.
 
 ### Everyday commands
 
 ```bash
-# Apply anything (multi-document YAML, file or stdin)
-ax apply -f examples/simple.yaml
+# Create resources (multi-document YAML, file or stdin)
+ax create -f examples/simple.yaml
 
 # Tasks
 ax get tasks                          # list

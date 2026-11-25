@@ -28,9 +28,9 @@ RUN_LIVE_STEPS=1 ./hack/hero-demo/run.sh --remote-context <kube-context>  # and 
 With `RUN_LIVE_STEPS=1`, the harness calls:
 
 - Step 1: `ax get workspaces`, to check `ax-server` is reachable.
-- Step 2: `ax apply -f workspace.yaml`, which waits for the pre-warm, then `ax describe workspace` to check `SnapshotReady`.
-- Step 3: check that the cluster has the `hero-demo-gemini` Secret with the `ax.io/credential=true` label (with `kubectl`, when it is installed), `ax apply -f gateway.yaml` and `ax apply -f task-starter.yaml`, then `ax resume`, and wait until the agent has finished with output.
-- Step 4: `ax apply -f task-custom.yaml`, then `ax resume`; once the task's command has started, `ax suspend` and `ax resume`, and wait until the command has finished with output. The command waits on its first run and runs the unit tests after the resume; the step fails unless they pass.
+- Step 2: `ax create -f workspace.yaml`, which waits for the pre-warm, then `ax describe workspace` to check `SnapshotReady`.
+- Step 3: check that the cluster has the `hero-demo-gemini` Secret with the `ax.io/credential=true` label (with `kubectl`, when it is installed), `ax create -f gateway.yaml` and `ax create -f task-starter.yaml`, then `ax resume`, and wait until the agent has finished with output.
+- Step 4: `ax create -f task-custom.yaml`, then `ax resume`; once the task's command has started, `ax suspend` and `ax resume`, and wait until the command has finished with output. The command waits on its first run and runs the unit tests after the resume; the step fails unless they pass.
 - Step 5: `ax promote task hero-demo-starter-task --to <remote> --replace --suspend-source`, then wait until the promoted task's agent has finished with output on the remote cluster.
 
 AX does not report yet that a task's command finished ([#690](https://github.com/google/ax/issues/690)): the task stays `Running`, with no `status.outcome`. So both tasks set `spec.commands` that write their exit status to `/workspace/.ax/hero-demo-exit-code` when they finish, and the harness reads it, and the output in `/workspace/.ax/output` (`$AX_OUTPUT_FILE`), over `ax ssh` (both tasks set `spec.debug`). The starter task's command runs the image's launcher, as `ax-runner` does for a task with a goal and no commands, and does not run the agent again once it has recorded a status.
@@ -41,15 +41,15 @@ Still stubbed: local mode and the AX Studio health check (Step 1), and the secon
 
 ## Checking the warm snapshot by hand
 
-Step 2 waits for the pre-warm, so the first run takes as long as the image pull, `spec.setup`, and the snapshot upload. Later runs find the workspace unchanged and return at once.
+Step 2 waits for the pre-warm, so creation takes as long as the image pull, `spec.setup`, and the snapshot upload. Because `ax create` is create-only, delete the existing workspace before rerunning Step 2.
 
 ```bash
-ax apply -f hack/hero-demo/workspace.yaml
+ax create -f hack/hero-demo/workspace.yaml
 ax describe workspace hero-demo-ws         # Phase: Ready; SnapshotReady names the tag ws-<workspace>-<template>-r1
 ax describe task hero-demo-starter-task    # WorkspaceReady: "Workspace seeded from snapshot tag <the same tag>"
 ax ssh hero-demo-starter-task -- ls /workspace/app   # after `ax resume`: the files spec.setup wrote
 ```
 
-While the apply runs, `kubectl -n ax-system logs deploy/ax-server -f` shows `provisioning workspace setup actor`. Workspaces are immutable, so to pre-warm again, or to change `STARTER_IMAGE`, delete the tasks and then `ax delete workspace hero-demo-ws`. A cluster that Step 5 promoted to has its own copy of the workspace, to delete the same way.
+While creation runs, `kubectl -n ax-system logs deploy/ax-server -f` shows `provisioning workspace setup actor`. Workspaces are immutable, so to pre-warm again, or to change `STARTER_IMAGE`, delete the tasks and then `ax delete workspace hero-demo-ws`. A cluster that Step 5 promoted to has its own copy of the workspace, to delete the same way.
 
 The manifests use the `v1alpha1` schema on `main`. The starter task reaches the Gemini API through the Gateway in [`gateway.yaml`](./gateway.yaml), which names the Secret that holds the API key.

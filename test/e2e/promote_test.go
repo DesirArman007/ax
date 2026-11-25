@@ -74,11 +74,11 @@ func TestE2E_Promote(t *testing.T) {
 	// Setup: a running task on the source cluster, in a workspace that is set
 	// up through a gateway of its own.
 	for _, name := range []string{gw, setupGW} {
-		env.apply(t, ns, renderYAML(t, gatewayCRUDManifest, map[string]string{
+		env.create(t, ns, renderYAML(t, gatewayCRUDManifest, map[string]string{
 			"Name": name, "Atespace": ns, "Host": "ax-echo." + env.AXSystemNamespace + ".svc",
 		}))
 	}
-	env.apply(t, ns, renderYAML(t, promoteManifest, map[string]string{
+	env.create(t, ns, renderYAML(t, promoteManifest, map[string]string{
 		"Gateway": gw, "SetupGateway": setupGW, "Workspace": ws, "Task": task, "Atespace": ns,
 	}))
 	env.mustRunAX(t, ns, "resume", "task", task)

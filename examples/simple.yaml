@@ -17,7 +17,7 @@
 # The server runs it on the default runner image with an empty
 # /workspace directory.
 #
-#   ax apply -f examples/simple.yaml
+#   ax create -f examples/simple.yaml
 #   ax describe task simple-task
 #   ax ssh simple-task -- ls -la /workspace
 apiVersion: ax.io/v1alpha1

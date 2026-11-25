@@ -157,7 +157,7 @@ func TestValidateResources(t *testing.T) {
 		})
 	}
 
-	// ValidateTask runs the same check, so ax apply rejects bad limits up front.
+	// ValidateTask runs the same check, so ax create rejects bad limits up front.
 	meta := &v1alpha1.ObjectMeta{Name: "task", Atespace: "default"}
 	err := apivalidation.ValidateTask(&v1alpha1.Task{Metadata: meta, Spec: &v1alpha1.TaskSpec{Profile: &v1alpha1.Profile{Resources: limits("abc", "")}}})
 	if err == nil || !strings.Contains(err.Error(), "spec.profile.resources.limits.cpu") {

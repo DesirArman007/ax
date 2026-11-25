@@ -145,10 +145,10 @@ deploy-server: check-image-repo
 		-e 's|$${AX_RUNNER_VOLUME_IMAGE}|$(AX_RUNNER_VOLUME_IMAGE)|g' \
 		deploy/ax-server.yaml | kubectl apply -f -
 
-# Apply example task and resources
+# Create example task and resources
 apply-example:
-	@echo "==> Applying example task and resources using bin/ax..."
-	./bin/ax apply -f examples/simple.yaml
+	@echo "==> Creating example task and resources using bin/ax..."
+	./bin/ax create -f examples/simple.yaml
 
 ## --------------------------------------
 ## API Targets

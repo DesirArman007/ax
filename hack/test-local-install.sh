@@ -117,7 +117,7 @@ log "Running ax local start with ${server_image}..."
 "${AX}" local status --name "${CLUSTER}"
 
 log "Running a task from ${task_image}..."
-"${AX}" apply -f - << EOF
+"${AX}" create -f - << EOF
 apiVersion: ax.io/v1alpha1
 kind: Task
 metadata:

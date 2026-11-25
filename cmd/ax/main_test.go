@@ -38,7 +38,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestApplyAtespace(t *testing.T) {
+func TestCreateAtespace(t *testing.T) {
 	// Exercise flag parsing and dispatch as well as the resource RPCs.
 	binary := filepath.Join(t.TempDir(), "ax")
 	if output, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
@@ -84,7 +84,7 @@ func TestApplyAtespace(t *testing.T) {
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
-				args := append([]string{"--server", listener.Addr().String(), "apply", "-f", path}, tc.flags...)
+				args := append([]string{"--server", listener.Addr().String(), "create", "-f", path}, tc.flags...)
 				output, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
 				if tc.wantErr != "" {
 					var exitErr *exec.ExitError
@@ -96,19 +96,11 @@ func TestApplyAtespace(t *testing.T) {
 					if err != nil || string(output) != wantOutput {
 						t.Fatalf("expected %q, got %v\n%s", wantOutput, err, output)
 					}
-					// Tasks are immutable; other resources remain unchanged on reapply.
+					// All resources are create-only; re-creating an existing one fails.
 					output, err = exec.CommandContext(ctx, binary, args...).CombinedOutput()
-					if kind == "Task" {
-						var exitErr *exec.ExitError
-						wantErr := fmt.Sprintf("code = FailedPrecondition desc = task %s/example already exists and is immutable", tc.wantAtespace)
-						if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || !strings.Contains(string(output), wantErr) {
-							t.Fatalf("expected exit 1 with %q on reapply, got %v\n%s", wantErr, err, output)
-						}
-					} else {
-						wantOutput = strings.ToLower(kind) + ".ax.io/example unchanged\n"
-						if err != nil || string(output) != wantOutput {
-							t.Fatalf("expected %q on reapply, got %v\n%s", wantOutput, err, output)
-						}
+					var exitErr *exec.ExitError
+					if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || !strings.Contains(string(output), "already exists") {
+						t.Fatalf("expected exit 1 with %q on recreate, got %v\n%s", "already exists", err, output)
 					}
 				}
 
@@ -142,7 +134,7 @@ func TestApplyAtespace(t *testing.T) {
 	}
 }
 
-func TestRunApplyEmptyDocuments(t *testing.T) {
+func TestRunCreateEmptyDocuments(t *testing.T) {
 	const first = "apiVersion: ax.io/v1alpha1\nkind: Workspace\nmetadata:\n  name: first\nspec: {}\n"
 	second := strings.Replace(first, "name: first", "name: second", 1)
 	for _, tc := range []struct {
@@ -156,11 +148,11 @@ func TestRunApplyEmptyDocuments(t *testing.T) {
 		{name: "leading empty document", manifest: "---\n---\n" + first, wantNames: []string{"first"}},
 		{name: "trailing separator", manifest: first + "---\n", wantNames: []string{"first"}},
 		{name: "middle empty documents", manifest: first + "---\n# empty\n---\n---\n" + second, wantNames: []string{"first", "second"}},
-		{name: "missing kind", manifest: first + "---\n---\n{}\n---\n" + second, wantNames: []string{"first"}, wantErr: "applying document 3: missing kind"},
-		{name: "explicit null", manifest: "null\n", wantErr: "applying document 1: missing kind"},
-		{name: "tagged null", manifest: "!!null\n", wantErr: "applying document 1: missing kind"},
-		{name: "tagged quoted null", manifest: "!!null \"\"\n", wantErr: "applying document 1: missing kind"},
-		{name: "empty string", manifest: "\"\"\n", wantErr: "applying document 1: reading kind"},
+		{name: "missing kind", manifest: first + "---\n---\n{}\n---\n" + second, wantNames: []string{"first"}, wantErr: "creating document 3: missing kind"},
+		{name: "explicit null", manifest: "null\n", wantErr: "creating document 1: missing kind"},
+		{name: "tagged null", manifest: "!!null\n", wantErr: "creating document 1: missing kind"},
+		{name: "tagged quoted null", manifest: "!!null \"\"\n", wantErr: "creating document 1: missing kind"},
+		{name: "empty string", manifest: "\"\"\n", wantErr: "creating document 1: reading kind"},
 		{name: "invalid YAML", manifest: first + "---\n[\n", wantNames: []string{"first"}, wantErr: "decoding document 2:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -177,7 +169,7 @@ func TestRunApplyEmptyDocuments(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.manifest), 0600); err != nil {
 				t.Fatal(err)
 			}
-			// runApply writes to os.Stdout, so these subtests must remain sequential.
+			// runCreate writes to os.Stdout, so these subtests must remain sequential.
 			output, err := os.CreateTemp(t.TempDir(), "stdout")
 			if err != nil {
 				t.Fatal(err)
@@ -189,7 +181,7 @@ func TestRunApplyEmptyDocuments(t *testing.T) {
 				_ = output.Close()
 			})
 
-			runErr := runApply(listener.Addr().String(), nil, []string{"-f", path})
+			runErr := runCreate(listener.Addr().String(), nil, []string{"-f", path})
 			if tc.wantErr == "" {
 				if runErr != nil {
 					t.Fatal(runErr)
@@ -458,33 +450,33 @@ func TestParseGlobalArgs(t *testing.T) {
 		},
 		{
 			name: "omitted atespace is not explicit",
-			args: []string{"apply", "-f", "resource.yaml"},
-			want: globalArgs{cmd: "apply", args: []string{"-f", "resource.yaml"}, atespace: "default", namespace: "ax-system"},
+			args: []string{"create", "-f", "resource.yaml"},
+			want: globalArgs{cmd: "create", args: []string{"-f", "resource.yaml"}, atespace: "default", namespace: "ax-system"},
 		},
 		{
 			name: "explicit default atespace",
-			args: []string{"apply", "-a", "default"},
-			want: globalArgs{cmd: "apply", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
+			args: []string{"create", "-a", "default"},
+			want: globalArgs{cmd: "create", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
 		},
 		{
 			name: "long atespace flag",
-			args: []string{"apply", "--atespace", "team"},
-			want: globalArgs{cmd: "apply", atespace: "team", atespaceExplicit: true, namespace: "ax-system"},
+			args: []string{"create", "--atespace", "team"},
+			want: globalArgs{cmd: "create", atespace: "team", atespaceExplicit: true, namespace: "ax-system"},
 		},
 		{
 			name: "atespace with equals",
-			args: []string{"apply", "--atespace=team"},
-			want: globalArgs{cmd: "apply", atespace: "team", atespaceExplicit: true, namespace: "ax-system"},
+			args: []string{"create", "--atespace=team"},
+			want: globalArgs{cmd: "create", atespace: "team", atespaceExplicit: true, namespace: "ax-system"},
 		},
 		{
 			name: "explicit default with equals",
-			args: []string{"apply", "--atespace=default"},
-			want: globalArgs{cmd: "apply", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
+			args: []string{"create", "--atespace=default"},
+			want: globalArgs{cmd: "create", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
 		},
 		{
 			name: "last atespace flag wins",
-			args: []string{"-a", "team", "apply", "--atespace=default"},
-			want: globalArgs{cmd: "apply", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
+			args: []string{"-a", "team", "create", "--atespace=default"},
+			want: globalArgs{cmd: "create", atespace: "default", atespaceExplicit: true, namespace: "ax-system"},
 		},
 		{
 			name: "flags after -- belong to the remote command",

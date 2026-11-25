@@ -113,7 +113,7 @@ func (s *Server) lookupSetupGateway(ctx context.Context, atespace string, spec *
 	return gw, nil
 }
 
-// saveOrLoadWorkspace handles repeated `ax apply` calls (enforcing immutability)
+// saveOrLoadWorkspace handles repeated CreateWorkspace calls (enforcing immutability)
 // and persists a newly created Workspace. A Workspace that still needs pre-warming
 // is returned in Phase=Preparing alongside its resolved setup.gateway; an already
 // Ready Workspace (or one created while pre-warming is disabled) returns early
